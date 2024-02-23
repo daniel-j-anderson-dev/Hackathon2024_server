@@ -11,3 +11,4 @@ color-eyre = "0.6.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.114"
 tokio = { version = "1.36", features = ["full"] }
+games = { package = "games"}

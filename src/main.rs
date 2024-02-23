@@ -1,5 +1,3 @@
-mod games;
-
 use axum::{routing::get, Router};
 use color_eyre::{eyre::eyre, Report};
 use tokio::net::TcpListener;
