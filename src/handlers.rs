@@ -1,16 +1,16 @@
 use axum::{
     debug_handler,
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     Json,
 };
-use games::tic_tac_toe::Cell;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use games::tic_tac_toe::Cell;
 use crate::{
     session::{SessionCapacity, TicTacToeSession, TicTacToeUpdate},
-    AppData,
+    Sessions,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,8 +19,8 @@ pub struct SessionResponse {
     session: TicTacToeSession,
 }
 #[debug_handler]
-pub async fn handle_join(State(sessions): State<AppData>) -> Json<SessionResponse> {
-    let mut sessions = sessions.data.lock().await;
+pub async fn handle_join(State(sessions): State<Sessions>) -> Json<SessionResponse> {
+    let mut sessions = sessions.lock().await;
 
     // loop through existing session and add a player where available
     for (session_id, session) in sessions.iter_mut() {
@@ -54,53 +54,123 @@ pub async fn handle_join(State(sessions): State<AppData>) -> Json<SessionRespons
     });
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionRequest {
+    session_id: Uuid,
+}
 #[debug_handler]
-pub async fn handle_get_game_by_id(
-    State(sessions): State<AppData>,
-    Path(session_id): Path<Uuid>,
-) -> Json<SessionResponse> {
-    let sessions = sessions.data.lock().await;
-    return Json(SessionResponse {
-        session: sessions[&session_id],
-        session_id,
-    });
+pub async fn handle_get_game(
+    State(sessions): State<Sessions>,
+    Json(SessionRequest { session_id }): Json<SessionRequest>,
+) -> Result<Json<SessionResponse>, StatusCode> {
+    let sessions = sessions.lock().await;
+    return match sessions.get(&session_id) {
+        Some(&session) => Ok(Json(SessionResponse {
+            session,
+            session_id,
+        })),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum UpdateError {
+    InvalidSessionId,
+    SessionIsEmpty,
+    ExpectedPlayer2Id,
+    ExpectedPlayer1Id,
+    InvalidPlayerId,
+    CellAlreadyFull,
 }
 
 #[debug_handler]
+/// This handler function will update a specific game.
+/// - State(`sessions`): This is the backbone data of the server
+/// - Json(`update`): This must have a valid session [Uuid], and a correspondingly valid player [Uuid]
 pub async fn handle_game_update(
-    State(sessions): State<AppData>,
+    State(sessions): State<Sessions>,
     Json(update): Json<TicTacToeUpdate>,
-) -> Result<Json<SessionResponse>, StatusCode> {
-    let mut sessions = sessions.data.lock().await;
+) -> Result<Json<SessionResponse>, Json<UpdateError>> {
+    let mut sessions = sessions.lock().await;
 
     let session = sessions
         .get_mut(&update.session_id)
-        .ok_or_else(|| StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| UpdateError::InvalidSessionId)?;
 
     if !session.capacity().is_full() {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(Json(UpdateError::SessionIsEmpty));
     }
+    let player1_id = session.player1_id().expect("full capacity means player1 is Some");
+    let player2_id = session.player2_id().expect("full capacity means player2 is Some");
 
-    let cell_value = if session
-        .player1_id()
-        .expect("full capacity means player1 is Some")
-        == update.player_id
-    {
-        Cell::X
-    } else if session
-        .player2_id()
-        .expect("full capacity means player2 is Some")
-        == update.player_id
-    {
-        Cell::O
+    let cell_value = if player1_id == update.player_id {
+        if session.state.is_x_turn {
+            Cell::X
+        } else {
+            return Err(Json(UpdateError::ExpectedPlayer2Id));
+        }
+    } else if player2_id == update.player_id {
+        if !session.state.is_x_turn {
+            Cell::O
+        } else {
+            return Err(Json(UpdateError::ExpectedPlayer1Id));
+        }
     } else {
-        return Err(StatusCode::NOT_MODIFIED);
+        return Err(Json(UpdateError::InvalidPlayerId));
     };
 
+    if !session.state.board.get_cell(update.cell_index).is_empty() {
+        return Err(Json(UpdateError::CellAlreadyFull));
+    }
+
     session.state.board.set_cell(update.cell_index, cell_value);
+    session.state.is_x_turn = !session.state.is_x_turn;
+    session.state.winner = session.state.board.get_winner();
 
     return Ok(Json(SessionResponse {
         session: *session,
         session_id: update.session_id,
     }));
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LeaveRequest {
+    session_id: Uuid,
+    player_id: Option<Uuid>,
+}
+
+#[debug_handler]
+pub async fn handle_leave(
+    State(sessions): State<Sessions>,
+    Json(LeaveRequest { session_id, player_id }): Json<LeaveRequest>,
+) -> Result<(), StatusCode> {
+    let mut sessions = sessions.lock().await;
+
+    let is_session_over = {
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| StatusCode::NOT_FOUND)?;
+
+        if session.capacity().is_empty() {
+            return Err(StatusCode::FORBIDDEN);
+        }
+
+        if player_id == session.player1_id() {
+            session.remove_player1();
+        } else if player_id == session.player2_id() {
+            session.remove_player2();
+        } else {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+
+        session.capacity().is_empty()
+    };
+
+    if is_session_over {
+        sessions
+            .remove(&session_id)
+            .expect("If the session id was invalid we would have returned already");
+    }
+
+    return Ok(());
 }
