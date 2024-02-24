@@ -8,10 +8,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use games::tic_tac_toe::Cell;
-use crate::{
-    session::{SessionCapacity, TicTacToeSession, TicTacToeUpdate},
-    Sessions,
-};
+use crate::{SessionCapacity, Sessions, TicTacToeSession, TicTacToeUpdate};
+
+#[debug_handler]
+pub async fn handle_root() -> &'static str {
+    "Endpoints are\nGET /get\nPUT /update\nPOST /join\nPUT /leave"
+}
 
 #[debug_handler]
 pub async fn handle_join(State(sessions): State<Sessions>) -> Json<(Uuid, TicTacToeSession)> {
@@ -64,11 +66,6 @@ pub enum UpdateError {
     ExpectedPlayer1Id,
     InvalidPlayerId,
     CellAlreadyFull,
-}
-
-#[debug_handler]
-pub async fn handle_root() -> &'static str {
-    "Endpoints are\nGET /get\nPUT /update\nPOST /join\nPUT /leave"
 }
 
 #[debug_handler]
