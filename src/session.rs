@@ -58,6 +58,16 @@ impl TicTacToeSession {
             self.player2_id = Some(Uuid::new_v4());
         }
     }
+    pub fn remove_player1(&mut self) {
+        if self.player1_id.is_some() {
+            self.player1_id = None;
+        }
+    }
+    pub fn remove_player2(&mut self) {
+        if self.player2_id.is_some() {
+            self.player2_id = None;
+        }
+    }
 }
 pub enum SessionCapacity {
     Empty,
@@ -68,6 +78,13 @@ pub enum SessionCapacity {
 impl SessionCapacity {
     pub fn is_full(&self) -> bool {
         return if let SessionCapacity::Full = self {
+            true
+        } else {
+            false
+        };
+    }
+    pub fn is_empty(&self) -> bool {
+        return if let SessionCapacity::Empty = self {
             true
         } else {
             false
