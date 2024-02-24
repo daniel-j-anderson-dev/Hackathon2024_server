@@ -1,3 +1,7 @@
+pub mod handlers;
+pub mod session;
+
+
 use axum::{
     routing::{get, post, put},
     Router,
@@ -5,8 +9,11 @@ use axum::{
 use color_eyre::Report;
 use std::{sync::Arc, collections::HashMap};
 use tokio::{net::TcpListener, sync::Mutex};
+use uuid::Uuid;
 
-use server::handlers::*;
+pub use crate::{handlers::*, session::*};
+
+pub type Sessions = Arc<Mutex<HashMap<Uuid, TicTacToeSession>>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Report> {
