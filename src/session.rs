@@ -1,4 +1,4 @@
-use games::tic_tac_toe::{self, Cell, CellIndex};
+use games::tic_tac_toe::{self, CellIndex};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
