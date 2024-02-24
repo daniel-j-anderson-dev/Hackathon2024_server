@@ -17,10 +17,11 @@ async fn main() -> Result<(), Report> {
     let ip = "localhost:8080";
     let listener = TcpListener::bind(&ip).await?;
     let router = Router::new()
-        .route("/ttt/get", get(handle_get_game))
-        .route("/ttt/update", put(handle_game_update))
-        .route("/ttt/join", post(handle_join))
-        .route("/ttt/leave", put(handle_leave))
+        .route("/", get(handle_root))
+        .route("/get", get(handle_get_game))
+        .route("/update", put(handle_game_update))
+        .route("/join", post(handle_join))
+        .route("/leave", put(handle_leave))
         .with_state(sessions);
 
     // start server

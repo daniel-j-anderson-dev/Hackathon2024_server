@@ -13,13 +13,8 @@ use crate::{
     Sessions,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SessionResponse {
-    session_id: Uuid,
-    session: TicTacToeSession,
-}
 #[debug_handler]
-pub async fn handle_join(State(sessions): State<Sessions>) -> Json<SessionResponse> {
+pub async fn handle_join(State(sessions): State<Sessions>) -> Json<(Uuid, TicTacToeSession)> {
     let mut sessions = sessions.lock().await;
 
     // loop through existing session and add a player where available
@@ -27,17 +22,11 @@ pub async fn handle_join(State(sessions): State<Sessions>) -> Json<SessionRespon
         match session.capacity() {
             SessionCapacity::Empty | SessionCapacity::OnlyPlayer2 => {
                 session.add_player1();
-                return Json(SessionResponse {
-                    session_id: *session_id,
-                    session: *session,
-                });
+                return Json((*session_id, *session,));
             }
             SessionCapacity::OnlyPlayer1 => {
                 session.add_player2();
-                return Json(SessionResponse {
-                    session_id: *session_id,
-                    session: *session,
-                });
+                return Json((*session_id, *session));
             }
             SessionCapacity::Full => {}
         }
@@ -48,10 +37,7 @@ pub async fn handle_join(State(sessions): State<Sessions>) -> Json<SessionRespon
     let mut new_session = TicTacToeSession::default();
     new_session.add_player1();
     sessions.insert(new_session_id, new_session);
-    return Json(SessionResponse {
-        session_id: new_session_id,
-        session: new_session,
-    });
+    return Json((new_session_id, new_session));
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,13 +48,10 @@ pub struct SessionRequest {
 pub async fn handle_get_game(
     State(sessions): State<Sessions>,
     Json(SessionRequest { session_id }): Json<SessionRequest>,
-) -> Result<Json<SessionResponse>, StatusCode> {
+) -> Result<Json<(Uuid, TicTacToeSession)>, StatusCode> {
     let sessions = sessions.lock().await;
     return match sessions.get(&session_id) {
-        Some(&session) => Ok(Json(SessionResponse {
-            session,
-            session_id,
-        })),
+        Some(&session) => Ok(Json((session_id, session))),
         None => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -84,13 +67,18 @@ pub enum UpdateError {
 }
 
 #[debug_handler]
+pub async fn handle_root() -> &'static str {
+    "Endpoints are\nGET /get\nPUT /update\nPOST /join\nPUT /leave"
+}
+
+#[debug_handler]
 /// This handler function will update a specific game.
 /// - State(`sessions`): This is the backbone data of the server
 /// - Json(`update`): This must have a valid session [Uuid], and a correspondingly valid player [Uuid]
 pub async fn handle_game_update(
     State(sessions): State<Sessions>,
     Json(update): Json<TicTacToeUpdate>,
-) -> Result<Json<SessionResponse>, Json<UpdateError>> {
+) -> Result<Json<(Uuid, TicTacToeSession)>, Json<UpdateError>> {
     let mut sessions = sessions.lock().await;
 
     let session = sessions
@@ -127,10 +115,7 @@ pub async fn handle_game_update(
     session.state.is_x_turn = !session.state.is_x_turn;
     session.state.winner = session.state.board.get_winner();
 
-    return Ok(Json(SessionResponse {
-        session: *session,
-        session_id: update.session_id,
-    }));
+    return Ok(Json((update.session_id, *session)));
 }
 
 #[derive(Debug, Serialize, Deserialize)]
